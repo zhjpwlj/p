@@ -50,7 +50,7 @@
         async function fetchUrls() {
             if (!grecaptcha.getResponse()) return alert("ロボットではないことを確認してください。");
             try {
-                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/list.txt', {
+                let res = await fetch('https://api.github.com/repos/zhjpwlj/proxylist/contents/list.txt', {
                     headers: { 'Authorization': `token ${token}` }
                 });
                 if (res.ok) {
@@ -64,7 +64,7 @@
         // Fetch vote records from GitHub
         async function fetchVoteRecords() {
             try {
-                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/votes.json', {
+                let res = await fetch('https://api.github.com/repos/zhjpwlj/votes/contents/votes.json', {
                     headers: { 'Authorization': `token ${token}` }
                 });
                 if (res.ok) {
@@ -165,7 +165,7 @@
         async function updateList() {
             let updatedContent = accessibleUrls.join("\n"), encodedContent = btoa(updatedContent);
             try {
-                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/list.txt', {
+                let res = await fetch('https://api.github.com/repos/zhjpwlj/proxylist/contents/list.txt', {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: "Update list.txt", content: encodedContent, sha: 'your_file_sha_here' })
@@ -179,7 +179,7 @@
         async function saveVoteRecordsToGitHub() {
             let encodedVotes = btoa(JSON.stringify(voteRecords));
             try {
-                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/votes.json', {
+                let res = await fetch('https://api.github.com/repos/zhjpwlj/votes/contents/votes.json', {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
