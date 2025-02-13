@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL アクセスチェック</title>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Arial', sans-serif; background-color: #1E1E1E; color: #EDEDED; text-align: center; padding: 20px; }
+        h1 { font-size: 36px; margin-bottom: 15px; color: #FFD700; }
+        button { background-color: #28a745; color: white; font-size: 18px; padding: 12px 24px; border: none; border-radius: 8px; margin: 10px; cursor: pointer; }
+        button:hover { background-color: #218838; }
+        select { font-size: 18px; padding: 12px; border-radius: 8px; background-color: #2b2b2b; color: white; width: 250px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .url-list { display: flex; justify-content: space-between; max-width: 100%; }
+        .list { flex: 1; background: #333; padding: 15px; border-radius: 10px; margin: 10px; }
+        .url-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 18px; color: #999; }
+        .toggle-btn { padding: 6px 12px; background-color: #007bff; border: none; color: white; cursor: pointer; border-radius: 5px; }
+        .toggle-btn:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GitHub URL アクセスチェック</h1>
+        <div class="g-recaptcha" data-sitekey="your-recaptcha-site-key"></div>
+        <button onclick="fetchUrls()">URL を読み込む</button>
+        <button onclick="openNextUrls()" id="openUrlsButton" style="display:none;">次の 25 URL を開く</button>
+        <button onclick="updateList()" id="updateButton" style="display:none;">リストを更新</button>
+        <div class="url-list">
+            <div class="list">
+                <h2>✅ アクセス可能</h2>
+                <div id="accessibleList"></div>
+            </div>
+            <div class="list">
+                <h2>❌ ブロック</h2>
+                <div id="blockedList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let urls = [], token = "your_github_token_here", openedWindows = [], currentIndex = 0;
+        let accessibleUrls = [];
+        let blockedUrls = [];
+        let removedUrls = [];
+        let voteRecords = {};
+
+        // Fetch the URL list from GitHub
+        async function fetchUrls() {
+            if (!grecaptcha.getResponse()) return alert("ロボットではないことを確認してください。");
+            try {
+                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/list.txt', {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    urls = atob(data.content).split("\n").filter(url => url.trim() !== "");
+                    displayUrls();
+                } else throw new Error();
+            } catch { alert('URLリスト取得に失敗しました。'); }
+        }
+
+        // Fetch vote records from GitHub
+        async function fetchVoteRecords() {
+            try {
+                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/votes.json', {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    voteRecords = JSON.parse(atob(data.content));
+                } else {
+                    voteRecords = {}; // Initialize voteRecords if the file doesn't exist
+                }
+            } catch { alert('投票データ取得に失敗しました。'); }
+        }
+
+        // Display URLs for checking
+        function displayUrls() {
+            document.getElementById('accessibleList').innerHTML = '';
+            document.getElementById('blockedList').innerHTML = '';
+            urls.forEach(url => appendUrlItem(url, accessibleUrls.includes(url) ? 'accessible' : 'blocked'));
+            document.getElementById('openUrlsButton').style.display = 'block';
+            document.getElementById('updateButton').style.display = 'block';
+        }
+
+        // Append URL item with toggle buttons
+        function appendUrlItem(url, type) {
+            let container = document.createElement('div');
+            container.classList.add('url-item');
+            container.innerHTML = `
+                <span>${url}</span>
+                <button class="toggle-btn" onclick="toggleUrl('${url}')">${type === 'accessible' ? '❌ブロック' : '✅許可'}</button>
+            `;
+            document.getElementById(type === 'accessible' ? 'accessibleList' : 'blockedList').appendChild(container);
+        }
+
+        // Toggle URL between accessible and blocked
+        function toggleUrl(url) {
+            if (accessibleUrls.includes(url)) {
+                accessibleUrls = accessibleUrls.filter(u => u !== url);
+                blockedUrls.push(url);
+                addVote(url, false);
+            } else {
+                blockedUrls = blockedUrls.filter(u => u !== url);
+                accessibleUrls.push(url);
+                addVote(url, true);
+            }
+            saveAndReload();
+        }
+
+        // Add vote for the URL
+        function addVote(url, isAccessible) {
+            let userId = `user-${Date.now()}`; // Use session ID or any user-specific identifier
+            if (!voteRecords[url]) voteRecords[url] = { accessible: [], blocked: [] };
+
+            if (isAccessible) {
+                voteRecords[url].accessible.push(userId);
+            } else {
+                voteRecords[url].blocked.push(userId);
+            }
+            checkForRemoval(url);
+        }
+
+        // Check if the URL should be removed based on votes
+        function checkForRemoval(url) {
+            // Count unique users marking it as blocked
+            let blockedByUniqueUsers = [...new Set(voteRecords[url].blocked)];
+            if (blockedByUniqueUsers.length >= 2) {
+                removedUrls.push(url);
+                saveRemovedUrls();
+                removeUrlFromList(url);
+            }
+        }
+
+        // Save the updated lists in localStorage
+        function saveAndReload() {
+            localStorage.setItem('accessibleUrls', JSON.stringify(accessibleUrls));
+            localStorage.setItem('blockedUrls', JSON.stringify(blockedUrls));
+            displayUrls();
+            saveVoteRecordsToGitHub(); // Save vote records to GitHub
+        }
+
+        // Save the removed URLs list
+        function saveRemovedUrls() {
+            localStorage.setItem('removedUrls', JSON.stringify(removedUrls));
+        }
+
+        // Remove the URL from the list
+        function removeUrlFromList(url) {
+            urls = urls.filter(u => u !== url);
+            displayUrls();
+        }
+
+        // Open the next 25 URLs
+        function openNextUrls() {
+            openedWindows.forEach(win => win.close());
+            openedWindows = urls.slice(currentIndex, currentIndex + 25).map(url => window.open(url, '_blank')).filter(win => win);
+            currentIndex += 25;
+            if (currentIndex >= urls.length) document.getElementById('openUrlsButton').style.display = 'none';
+        }
+
+        // Update list.txt on GitHub
+        async function updateList() {
+            let updatedContent = accessibleUrls.join("\n"), encodedContent = btoa(updatedContent);
+            try {
+                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/list.txt', {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: "Update list.txt", content: encodedContent, sha: 'your_file_sha_here' })
+                });
+                if (!res.ok) throw new Error();
+                alert('リストが更新されました！');
+            } catch { alert('更新に失敗しました。'); }
+        }
+
+        // Save vote records to GitHub
+        async function saveVoteRecordsToGitHub() {
+            let encodedVotes = btoa(JSON.stringify(voteRecords));
+            try {
+                let res = await fetch('https://api.github.com/repos/your_username/your_repo/contents/votes.json', {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: "Update vote records",
+                        content: encodedVotes,
+                        sha: 'your_votes_sha_here'
+                    })
+                });
+                if (!res.ok) throw new Error();
+            } catch { alert('投票データの更新に失敗しました。'); }
+        }
+
+        // Fetch vote records and URLs when the page loads
+        window.onload = async function() {
+            await fetchUrls();
+            await fetchVoteRecords();
+        }
+    </script>
+</body>
+</html>
