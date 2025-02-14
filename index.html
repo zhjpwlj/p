@@ -40,40 +40,41 @@
     </div>
 
     <script>
-        let urls = [], token = "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", openedWindows = [], currentIndex = 0;
-        let accessibleUrls = [];
-        let blockedUrls = [];
-        let removedUrls = [];
-        let voteRecords = {};
+        const token = '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'; // Replace with your GitHub token
+        const owner = 'zhjpwlj'; // GitHub username
+        const repo = 'proxylist'; // GitHub repo (list.txt file)
+        const votesRepo = 'votes'; // GitHub repo (votes.json file)
+        let urls = [], voteRecords = {}, accessibleUrls = [], blockedUrls = [], removedUrls = [];
+        let openedWindows = [], currentIndex = 0;
 
         // Fetch the URL list from GitHub
         async function fetchUrls() {
             if (!grecaptcha.getResponse()) return alert("ロボットではないことを確認してください。");
             try {
-                let res = await fetch('https://api.github.com/repos/zhjpwlj/proxylist/contents/list.txt', {
+                const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/list.txt`, {
                     headers: { 'Authorization': `token ${token}` }
                 });
                 if (res.ok) {
-                    let data = await res.json();
+                    const data = await res.json();
                     urls = atob(data.content).split("\n").filter(url => url.trim() !== "");
                     displayUrls();
-                } else throw new Error();
-            } catch { alert('URLリスト取得に失敗しました。'); }
+                } else throw new Error('Failed to fetch URL list');
+            } catch (error) { alert('URLリスト取得に失敗しました。'); console.error(error); }
         }
 
         // Fetch vote records from GitHub
         async function fetchVoteRecords() {
             try {
-                let res = await fetch('https://api.github.com/repos/zhjpwlj/votes/contents/votes.json', {
+                const res = await fetch(`https://api.github.com/repos/${owner}/${votesRepo}/contents/votes.json`, {
                     headers: { 'Authorization': `token ${token}` }
                 });
                 if (res.ok) {
-                    let data = await res.json();
+                    const data = await res.json();
                     voteRecords = JSON.parse(atob(data.content));
                 } else {
                     voteRecords = {}; // Initialize voteRecords if the file doesn't exist
                 }
-            } catch { alert('投票データ取得に失敗しました。'); }
+            } catch (error) { alert('投票データ取得に失敗しました。'); console.error(error); }
         }
 
         // Display URLs for checking
@@ -165,31 +166,50 @@
         async function updateList() {
             let updatedContent = accessibleUrls.join("\n"), encodedContent = btoa(updatedContent);
             try {
-                let res = await fetch('https://api.github.com/repos/zhjpwlj/proxylist/contents/list.txt', {
+                const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/list.txt`, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: "Update list.txt", content: encodedContent, sha: 'your_file_sha_here' })
+                    body: JSON.stringify({
+                        message: "Update list.txt",
+                        content: encodedContent,
+                        sha: await getFileSHA('list.txt') // Fetch current SHA of list.txt
+                    })
                 });
-                if (!res.ok) throw new Error();
+                if (!res.ok) throw new Error('Failed to update list.txt');
                 alert('リストが更新されました！');
-            } catch { alert('更新に失敗しました。'); }
+            } catch (error) { alert('更新に失敗しました。'); console.error(error); }
         }
 
         // Save vote records to GitHub
         async function saveVoteRecordsToGitHub() {
-            let encodedVotes = btoa(JSON.stringify(voteRecords));
+            let encodedVotes = b
+
+toa(JSON.stringify(voteRecords));
             try {
-                let res = await fetch('https://api.github.com/repos/zhjpwlj/votes/contents/votes.json', {
+                const res = await fetch(`https://api.github.com/repos/${owner}/${votesRepo}/contents/votes.json`, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: "Update vote records",
                         content: encodedVotes,
-                        sha: 'your_votes_sha_here'
+                        sha: await getFileSHA('votes.json') // Fetch current SHA of votes.json
                     })
                 });
-                if (!res.ok) throw new Error();
-            } catch { alert('投票データの更新に失敗しました。'); }
+                if (!res.ok) throw new Error('Failed to update votes.json');
+            } catch (error) { alert('投票データの更新に失敗しました。'); console.error(error); }
+        }
+
+        // Get file SHA for updating content
+        async function getFileSHA(fileName) {
+            try {
+                const res = await fetch(`https://api.github.com/repos/${owner}/${fileName}/contents/${fileName}`, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                const data = await res.json();
+                return data.sha;
+            } catch (error) {
+                console.error('Error fetching file SHA:', error);
+            }
         }
 
         // Fetch vote records and URLs when the page loads
